@@ -3,6 +3,7 @@
 // ─────────────────────────────────────────────
 
 const LFM_BASE = 'https://ws.audioscrobbler.com/2.0/';
+const LFM_API_KEY = '048d40ced7589b88e9f774754a03f679';
 const ESCAPE_CARD_COUNT = 5;
 const ESCAPE_GENRES = [
   'jazz', 'classical', 'electronic', 'hip-hop', 'reggae',
@@ -12,9 +13,11 @@ const ESCAPE_GENRES = [
 
 // ── State ──────────────────────────────────────
 const state = {
-  apiKey: localStorage.getItem('lfm_api_key') || '',
+  apiKey: LFM_API_KEY,
+  musicApp: localStorage.getItem('musicApp') || '',
   seeds: JSON.parse(localStorage.getItem('seeds') || '[]'),
-  queue: [],          // main recommendation queue
+  queue: [],
+  dynamicSeeds: [],   // original seeds + liked tracks (most recent first)
   escapeQueue: [],    // genre-escape queue (separate — never mixed into main)
   escapeMode: false,
   escapeRemaining: 0,
@@ -28,7 +31,7 @@ const drag = { active: false, startX: 0, card: null };
 
 // ── Persistence ────────────────────────────────
 function persist() {
-  localStorage.setItem('lfm_api_key', state.apiKey);
+  localStorage.setItem('musicApp', state.musicApp);
   localStorage.setItem('seeds', JSON.stringify(state.seeds));
   localStorage.setItem('savedLikes', JSON.stringify(state.likes));
   localStorage.setItem('passedTracks', JSON.stringify([...state.passed]));
@@ -137,9 +140,7 @@ function renderSeeds() {
 }
 
 function validateStartBtn() {
-  const hasKey = document.getElementById('api-key-input').value.trim().length > 0;
-  const hasSeeds = state.seeds.length > 0;
-  document.getElementById('start-btn').disabled = !(hasKey && hasSeeds);
+  document.getElementById('start-btn').disabled = state.seeds.length === 0;
 }
 
 function addSeed() {
@@ -165,11 +166,9 @@ function addSeed() {
 }
 
 async function startDigging() {
-  const apiKey = document.getElementById('api-key-input').value.trim();
-  if (!apiKey) { toast('API key를 입력해줘.'); return; }
   if (!state.seeds.length) { toast('씨드 트랙을 1곡 이상 추가해줘.'); return; }
 
-  state.apiKey = apiKey;
+  state.musicApp = document.getElementById('music-app-select').value;
   persist();
 
   showScreen('discover');
@@ -179,6 +178,8 @@ async function startDigging() {
 // ── Discover screen ─────────────────────────────
 async function loadQueue() {
   setCardArea('<div class="loading-msg">추천 불러오는 중...</div>');
+
+  state.dynamicSeeds = [...state.seeds];
 
   const results = await Promise.all(
     state.seeds.map(s => fetchSimilar(s.artist, s.track, 20))
@@ -211,6 +212,35 @@ async function loadQueue() {
   // Prefetch tags for the first card in the background
   prefetchTags(0);
   renderCards();
+}
+
+async function refillQueue() {
+  const recentSeeds = state.dynamicSeeds.slice(0, 5);
+  const results = await Promise.all(
+    recentSeeds.map(s => fetchSimilar(s.artist, s.track, 15))
+  );
+
+  const seen = new Set([
+    ...state.passed,
+    ...state.likes.map(l => l.id),
+    ...state.queue.map(q => q.id),
+  ]);
+  const newTracks = [];
+
+  for (const list of results) {
+    for (const t of list) {
+      if (!seen.has(t.id) && !newTracks.find(m => m.id === t.id)) {
+        newTracks.push(t);
+      }
+    }
+  }
+
+  for (let i = newTracks.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [newTracks[i], newTracks[j]] = [newTracks[j], newTracks[i]];
+  }
+
+  state.queue.push(...newTracks.slice(0, 20));
 }
 
 async function prefetchTags(index) {
@@ -340,6 +370,8 @@ function commitSwipe(direction, card) {
 
   if (direction === 'right') {
     state.likes.unshift({ id: item.id, track: item.track, artist: item.artist, timestamp: Date.now() });
+    state.dynamicSeeds.unshift({ artist: item.artist, track: item.track });
+    if (state.dynamicSeeds.length > 10) state.dynamicSeeds.pop();
     toast('♥ ' + item.track);
   } else {
     state.passed.add(item.id);
@@ -352,6 +384,8 @@ function commitSwipe(direction, card) {
     if (state.escapeRemaining <= 0) exitEscapeMode(true);
     else updateEscapeBtn();
   }
+
+  if (!state.escapeMode && state.queue.length < 8) refillQueue();
 
   persist();
 
@@ -450,7 +484,7 @@ function showEmpty(msg) {
 document.getElementById('add-seed-btn').addEventListener('click', addSeed);
 document.getElementById('track-input').addEventListener('keydown', e => { if (e.key === 'Enter') addSeed(); });
 document.getElementById('artist-input').addEventListener('keydown', e => { if (e.key === 'Enter') document.getElementById('track-input').focus(); });
-document.getElementById('api-key-input').addEventListener('input', validateStartBtn);
+document.getElementById('setup-nav-btn').addEventListener('click', () => showScreen('setup'));
 document.getElementById('start-btn').addEventListener('click', startDigging);
 document.getElementById('pass-btn').addEventListener('click', () => swipeCard('left'));
 document.getElementById('like-btn').addEventListener('click', () => swipeCard('right'));
@@ -460,11 +494,9 @@ document.getElementById('back-btn').addEventListener('click', () => showScreen('
 
 // ── Init ────────────────────────────────────────
 (function init() {
-  // Restore API key field
-  if (state.apiKey) document.getElementById('api-key-input').value = state.apiKey;
+  if (state.musicApp) document.getElementById('music-app-select').value = state.musicApp;
 
-  // If already set up, go straight to discover
-  if (state.apiKey && state.seeds.length > 0) {
+  if (state.seeds.length > 0) {
     showScreen('discover');
     loadQueue();
   }
