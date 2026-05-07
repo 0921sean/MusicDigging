@@ -4,6 +4,11 @@
 
 const LFM_BASE = 'https://ws.audioscrobbler.com/2.0/';
 const LFM_API_KEY = '048d40ced7589b88e9f774754a03f679';
+const CLAUDE_API_KEY = window.LOCAL_CLAUDE_KEY || '';
+const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
+const CLAUDE_ENDPOINT = IS_LOCAL
+  ? 'https://api.anthropic.com/v1/messages'
+  : '/api/claude';
 const ESCAPE_CARD_COUNT = 5;
 const ESCAPE_GENRES = [
   'jazz', 'classical', 'electronic', 'hip-hop', 'reggae',
@@ -119,6 +124,327 @@ async function fetchEscapeTracks(excludeTags) {
   }
 }
 
+// ── Preview player ──────────────────────────────
+const player = new Audio();
+player.volume = 0.7;
+let currentPreviewId = null;
+
+async function fetchItunesData(artist, track) {
+  try {
+    const res = await fetch(
+      'https://itunes.apple.com/search?term=' +
+      encodeURIComponent(artist + ' ' + track) +
+      '&entity=song&limit=1'
+    );
+    const data = await res.json();
+    const r = data.results?.[0];
+    if (!r) return { artworkUrl: null, previewUrl: null };
+    return {
+      artworkUrl: r.artworkUrl100?.replace('100x100bb', '600x600bb') || null,
+      previewUrl: r.previewUrl || null,
+    };
+  } catch {
+    return { artworkUrl: null, previewUrl: null };
+  }
+}
+
+async function getItunesData(item) {
+  if (item._itunesFetched) return;
+  item._itunesFetched = true;
+  const data = await fetchItunesData(item.artist, item.track);
+  item.artworkUrl = data.artworkUrl;
+  item.previewUrl = data.previewUrl;
+}
+
+function stopPreview() {
+  player.pause();
+  currentPreviewId = null;
+  document.querySelectorAll('.preview-btn').forEach(b => {
+    b.textContent = '▶ 미리듣기';
+    b.classList.remove('playing');
+  });
+  document.querySelectorAll('.preview-bar').forEach(b => b.classList.remove('active'));
+}
+
+async function togglePreview(item, btn, bar) {
+  if (currentPreviewId === item.id && !player.paused) {
+    stopPreview();
+    return;
+  }
+
+  stopPreview();
+  btn.textContent = '로딩 중...';
+  btn.disabled = true;
+
+  await getItunesData(item);
+
+  if (!btn.isConnected) return;
+  btn.disabled = false;
+
+  const url = item.previewUrl;
+  if (!url) {
+    toast('미리듣기를 찾을 수 없어.');
+    btn.textContent = '▶ 미리듣기';
+    return;
+  }
+
+  currentPreviewId = item.id;
+  player.src = url;
+  player.currentTime = 0;
+  player.play();
+  btn.textContent = '■ 정지';
+  btn.classList.add('playing');
+
+  // Progress bar
+  bar.classList.add('active');
+  const fill = bar.querySelector('.preview-bar-fill');
+  fill.style.width = '0%';
+
+  player.ontimeupdate = () => {
+    if (!player.duration) return;
+    fill.style.width = (player.currentTime / player.duration * 100) + '%';
+  };
+
+  player.onended = () => {
+    if (currentPreviewId === item.id) {
+      currentPreviewId = null;
+      btn.textContent = '▶ 미리듣기';
+      btn.classList.remove('playing');
+      bar.classList.remove('active');
+      fill.style.width = '0%';
+    }
+  };
+}
+
+// ── Claude Vision Import ─────────────────────────
+let importContext = 'setup';
+
+function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve({
+      type: file.type || 'image/jpeg',
+      data: reader.result.split(',')[1],
+    });
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function parseImagesWithClaude(files) {
+  const images = await Promise.all([...files].map(fileToBase64));
+
+  const res = await fetch(CLAUDE_ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'anthropic-version': '2023-06-01',
+      'content-type': 'application/json',
+      ...(IS_LOCAL && {
+        'x-api-key': CLAUDE_API_KEY,
+        'anthropic-dangerous-direct-browser-access': 'true',
+      }),
+    },
+    body: JSON.stringify({
+      model: 'claude-haiku-4-5-20251001',
+      max_tokens: 2048,
+      messages: [{
+        role: 'user',
+        content: [
+          ...images.map(img => ({
+            type: 'image',
+            source: { type: 'base64', media_type: img.type, data: img.data },
+          })),
+          {
+            type: 'text',
+            text: '이 스크린샷들은 음악 앱 재생목록입니다. 보이는 모든 곡을 아래 형식으로만 출력하세요. 다른 텍스트는 절대 포함하지 마세요.\n\n아티스트명|||곡명\n아티스트명|||곡명',
+          },
+        ],
+      }],
+    }),
+  });
+
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({}));
+    throw new Error(err.error?.message || 'Claude API 오류 ' + res.status);
+  }
+
+  const data = await res.json();
+  const text = data.content[0]?.text || '';
+
+  const seen = new Set();
+  return text.split('\n')
+    .map(l => l.trim())
+    .filter(l => l.includes('|||'))
+    .map(l => {
+      const [artist, track] = l.split('|||').map(s => s.trim());
+      return (artist && track) ? { artist, track, id: artist + '::' + track } : null;
+    })
+    .filter(Boolean)
+    .filter(t => { if (seen.has(t.id)) return false; seen.add(t.id); return true; });
+}
+
+function setImportModalBody(html) {
+  document.getElementById('import-modal-body').innerHTML = html;
+}
+
+function openImportModal(context) {
+  importContext = context;
+  document.getElementById('import-modal-title').textContent =
+    context === 'discover' ? '재생목록 추가하기' : '재생목록 가져오기';
+  document.getElementById('import-modal').style.display = 'flex';
+  showUploadArea();
+}
+
+function closeImportModal() {
+  document.getElementById('import-modal').style.display = 'none';
+}
+
+function showUploadArea() {
+  setImportModalBody(`
+    <label class="upload-area" id="upload-area-label">
+      <div class="upload-icon">📷</div>
+      <div class="upload-text">이미지 클릭 또는 끌어다 놓기</div>
+      <div class="upload-sub">재생목록 스크린샷 여러 장<br>동시 업로드 가능</div>
+      <input type="file" id="import-file-input" accept="image/*" multiple style="display:none">
+    </label>
+  `);
+
+  const label = document.getElementById('upload-area-label');
+  const input = document.getElementById('import-file-input');
+
+  label.addEventListener('dragover', e => { e.preventDefault(); label.classList.add('drag-over'); });
+  label.addEventListener('dragleave', () => label.classList.remove('drag-over'));
+  label.addEventListener('drop', e => {
+    e.preventDefault();
+    label.classList.remove('drag-over');
+    handleImportFiles(e.dataTransfer.files);
+  });
+  input.addEventListener('change', () => handleImportFiles(input.files));
+}
+
+async function handleImportFiles(files) {
+  if (!files || !files.length) return;
+
+  setImportModalBody(`
+    <div class="import-loading">
+      <div class="loading-spinner"></div>
+      <div>이미지 ${files.length}장 분석 중...</div>
+    </div>
+  `);
+
+  try {
+    const tracks = await parseImagesWithClaude(files);
+
+    if (!tracks.length) {
+      setImportModalBody(`
+        <div class="import-error">
+          <div style="font-size:44px;margin-bottom:14px">🤔</div>
+          <p>곡을 찾지 못했어.<br>재생목록이 잘 보이는 스크린샷인지 확인해봐.</p>
+          <button class="import-action-btn" id="retry-btn" style="margin-top:20px;background:var(--surface2);color:var(--text)">다시 시도</button>
+        </div>
+      `);
+      document.getElementById('retry-btn').addEventListener('click', showUploadArea);
+      return;
+    }
+
+    const existingIds = new Set(state.seeds.map(s => s.artist + '::' + s.track));
+    const newTracks = tracks.filter(t => !existingIds.has(t.id));
+    const dupCount = tracks.length - newTracks.length;
+
+    setImportModalBody(`
+      <div>
+        <div class="import-results-header">
+          ${tracks.length}곡 발견${dupCount ? ` · 중복 ${dupCount}곡 제외` : ''} →
+          <strong style="color:var(--text)">신규 ${newTracks.length}곡</strong>
+        </div>
+        <div class="import-track-list">
+          ${tracks.map(t => {
+            const dup = existingIds.has(t.id);
+            return `<div class="import-track-row${dup ? ' dup' : ''}">
+              <div class="import-track-name">${esc(t.track)}</div>
+              <div class="import-artist-name">${esc(t.artist)}${dup ? ' · 이미 추가됨' : ''}</div>
+            </div>`;
+          }).join('')}
+        </div>
+        ${newTracks.length > 0
+          ? `<button class="import-action-btn" id="import-confirm-btn">
+              ${importContext === 'setup'
+                ? `씨드로 추가 (${newTracks.length}곡)`
+                : `추천에 반영 (${newTracks.length}곡)`}
+            </button>`
+          : `<p style="text-align:center;color:var(--muted);font-size:13px;padding:8px 0">모두 이미 추가된 곡이에요.</p>`
+        }
+      </div>
+    `);
+
+    document.getElementById('import-confirm-btn')?.addEventListener('click', () => {
+      closeImportModal();
+      confirmImport(newTracks);
+    });
+
+  } catch (e) {
+    setImportModalBody(`
+      <div class="import-error">
+        <div style="font-size:44px;margin-bottom:14px">⚠️</div>
+        <p style="margin-bottom:16px">${esc(e.message)}</p>
+        <button class="import-action-btn" id="retry-btn" style="background:var(--surface2);color:var(--text)">다시 시도</button>
+      </div>
+    `);
+    document.getElementById('retry-btn').addEventListener('click', showUploadArea);
+  }
+}
+
+function confirmImport(tracks) {
+  if (importContext === 'setup') {
+    const existing = new Set(state.seeds.map(s => s.artist + '::' + s.track));
+    const toAdd = tracks.filter(t => !existing.has(t.artist + '::' + t.track));
+    state.seeds.push(...toAdd.map(t => ({ artist: t.artist, track: t.track })));
+    persist();
+    renderSeeds();
+    toast(`✅ ${toAdd.length}곡 씨드에 추가됨`);
+  } else {
+    addSeedsAndRefresh(tracks);
+  }
+}
+
+async function addSeedsAndRefresh(tracks) {
+  // Prepend new tracks to dynamicSeeds so recommendations shift direction
+  for (const t of [...tracks].reverse()) {
+    state.dynamicSeeds.unshift({ artist: t.artist, track: t.track });
+  }
+  if (state.dynamicSeeds.length > 20) state.dynamicSeeds.length = 20;
+
+  toast('🎵 새 추천 불러오는 중...');
+
+  const results = await Promise.all(
+    tracks.slice(0, 5).map(s => fetchSimilar(s.artist, s.track, 12))
+  );
+
+  const seen = new Set([
+    ...state.passed,
+    ...state.likes.map(l => l.id),
+    ...state.queue.map(q => q.id),
+  ]);
+
+  const fresh = [];
+  for (const list of results) {
+    for (const t of list) {
+      if (!seen.has(t.id) && !fresh.find(m => m.id === t.id)) fresh.push(t);
+    }
+  }
+
+  for (let i = fresh.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [fresh[i], fresh[j]] = [fresh[j], fresh[i]];
+  }
+
+  // Insert right after current front card so new direction kicks in soon
+  const insertAt = Math.min(1, state.queue.length);
+  state.queue.splice(insertAt, 0, ...fresh.slice(0, 25));
+  persist();
+  toast(`✨ ${fresh.length}곡 추천 업데이트됨`);
+}
+
 // ── Setup screen ────────────────────────────────
 function renderSeeds() {
   const list = document.getElementById('seed-list');
@@ -153,8 +479,8 @@ function addSeed() {
     toast('아티스트와 노래 제목을 모두 입력해줘.');
     return;
   }
-  if (state.seeds.length >= 5) {
-    toast('최대 5곡까지 추가할 수 있어.');
+  if (state.seeds.length >= 10) {
+    toast('수동 입력은 최대 10곡까지. 더 추가하려면 📷 가져오기를 써봐.');
     return;
   }
 
@@ -182,7 +508,7 @@ async function loadQueue() {
   state.dynamicSeeds = [...state.seeds];
 
   const results = await Promise.all(
-    state.seeds.map(s => fetchSimilar(s.artist, s.track, 20))
+    state.seeds.slice(0, 10).map(s => fetchSimilar(s.artist, s.track, 20))
   );
 
   const seen = new Set([...state.passed, ...state.likes.map(l => l.id)]);
@@ -210,7 +536,7 @@ async function loadQueue() {
   }
 
   // Prefetch tags for the first card in the background
-  prefetchTags(0);
+  prefetchCardData(0);
   renderCards();
 }
 
@@ -243,12 +569,18 @@ async function refillQueue() {
   state.queue.push(...newTracks.slice(0, 20));
 }
 
-async function prefetchTags(index) {
+async function prefetchCardData(index) {
   const queue = state.escapeMode ? state.escapeQueue : state.queue;
   const item = queue[index];
-  if (!item || item.tags.length > 0) return;
-  item.tags = await fetchTags(item.artist, item.track);
-  // Re-render front card if it's still this one
+  if (!item) return;
+
+  await Promise.all([
+    item.tags.length === 0
+      ? fetchTags(item.artist, item.track).then(tags => { item.tags = tags; })
+      : Promise.resolve(),
+    getItunesData(item),
+  ]);
+
   const front = document.querySelector('.card.is-front');
   if (front && front.dataset.id === item.id) renderCards();
 }
@@ -283,14 +615,36 @@ function buildCard(item, isFront) {
     ? item.tags.map(t => `<span class="tag">${esc(t)}</span>`).join('')
     : '<span class="tag" style="opacity:0.4">로딩 중...</span>';
 
+  const artUrl = item.artworkUrl || '';
+
   card.innerHTML = `
-    ${item.isEscape ? '<span class="escape-badge">🎲 장르 탈출</span>' : ''}
+    <div class="card-art"${artUrl ? ` style="background-image:url('${artUrl}')"` : ''}>
+      ${!artUrl ? '<div class="card-art-placeholder">🎵</div>' : ''}
+      ${item.isEscape ? '<span class="escape-badge">🎲 장르 탈출</span>' : ''}
+      <div class="card-info-overlay">
+        <div class="card-track">${esc(item.track)}</div>
+        <div class="card-artist">${esc(item.artist)}</div>
+      </div>
+    </div>
     <div class="swipe-label like">LIKE</div>
     <div class="swipe-label pass">PASS</div>
-    <div class="card-track">${esc(item.track)}</div>
-    <div class="card-artist">${esc(item.artist)}</div>
-    <div class="card-tags">${tagsHtml}</div>
+    <div class="card-bottom">
+      <div class="card-tags">${tagsHtml}</div>
+      ${isFront ? `
+        <button class="preview-btn">▶ 미리듣기</button>
+        <div class="preview-bar"><div class="preview-bar-fill"></div></div>
+      ` : ''}
+    </div>
   `;
+
+  if (isFront) {
+    const btn = card.querySelector('.preview-btn');
+    const bar = card.querySelector('.preview-bar');
+    btn.addEventListener('mousedown', e => e.stopPropagation());
+    btn.addEventListener('touchstart', e => e.stopPropagation(), { passive: true });
+    btn.addEventListener('click', () => togglePreview(item, btn, bar));
+  }
+
   return card;
 }
 
@@ -368,6 +722,8 @@ function commitSwipe(direction, card) {
   const queue = state.escapeMode ? state.escapeQueue : state.queue;
   const item = queue[0];
 
+  stopPreview();
+
   if (direction === 'right') {
     state.likes.unshift({ id: item.id, track: item.track, artist: item.artist, timestamp: Date.now() });
     state.dynamicSeeds.unshift({ artist: item.artist, track: item.track });
@@ -391,7 +747,7 @@ function commitSwipe(direction, card) {
 
   setTimeout(() => {
     state.isAnimating = false;
-    prefetchTags(0);
+    prefetchCardData(0);
     renderCards();
   }, 360);
 }
@@ -491,6 +847,12 @@ document.getElementById('like-btn').addEventListener('click', () => swipeCard('r
 document.getElementById('escape-btn').addEventListener('click', handleEscape);
 document.getElementById('likes-nav-btn').addEventListener('click', showLikes);
 document.getElementById('back-btn').addEventListener('click', () => showScreen('discover'));
+document.getElementById('setup-import-btn').addEventListener('click', () => openImportModal('setup'));
+document.getElementById('discover-import-btn').addEventListener('click', () => openImportModal('discover'));
+document.getElementById('import-modal-close').addEventListener('click', closeImportModal);
+document.getElementById('import-modal').addEventListener('click', e => {
+  if (e.target === e.currentTarget) closeImportModal();
+});
 
 // ── Init ────────────────────────────────────────
 (function init() {
