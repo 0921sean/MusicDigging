@@ -219,20 +219,33 @@ async function togglePreview(item, btn, bar) {
 // ── Claude Vision Import ─────────────────────────
 let importContext = 'setup';
 
-function fileToBase64(file) {
-  return new Promise((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onload = () => resolve({
-      type: file.type || 'image/jpeg',
-      data: reader.result.split(',')[1],
-    });
-    reader.onerror = reject;
-    reader.readAsDataURL(file);
+function resizeAndEncode(file) {
+  return new Promise((resolve) => {
+    const img = new Image();
+    const url = URL.createObjectURL(file);
+    img.onload = () => {
+      const MAX = 1100;
+      let { width, height } = img;
+      if (width > MAX || height > MAX) {
+        if (width > height) { height = Math.round(height * MAX / width); width = MAX; }
+        else { width = Math.round(width * MAX / height); height = MAX; }
+      }
+      const canvas = document.createElement('canvas');
+      canvas.width = width; canvas.height = height;
+      canvas.getContext('2d').drawImage(img, 0, 0, width, height);
+      URL.revokeObjectURL(url);
+      canvas.toBlob(blob => {
+        const reader = new FileReader();
+        reader.onload = () => resolve({ type: 'image/jpeg', data: reader.result.split(',')[1] });
+        reader.readAsDataURL(blob);
+      }, 'image/jpeg', 0.78);
+    };
+    img.src = url;
   });
 }
 
 async function parseImagesWithClaude(files) {
-  const images = await Promise.all([...files].map(fileToBase64));
+  const images = await Promise.all([...files].map(resizeAndEncode));
 
   const res = await fetch(CLAUDE_ENDPOINT, {
     method: 'POST',
