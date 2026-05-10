@@ -4,10 +4,10 @@
 
 const LFM_BASE = 'https://ws.audioscrobbler.com/2.0/';
 const LFM_API_KEY = '048d40ced7589b88e9f774754a03f679';
-const CLAUDE_API_KEY = window.LOCAL_CLAUDE_KEY || '';
+const GEMINI_LOCAL_KEY = window.LOCAL_GEMINI_KEY || '';
 const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
-const CLAUDE_ENDPOINT = IS_LOCAL
-  ? 'https://api.anthropic.com/v1/messages'
+const VISION_ENDPOINT = IS_LOCAL
+  ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_LOCAL_KEY}`
   : '/api/claude';
 const ESCAPE_CARD_COUNT = 5;
 const ESCAPE_GENRES = [
@@ -247,28 +247,16 @@ function resizeAndEncode(file) {
 async function parseImagesWithClaude(files) {
   const images = await Promise.all([...files].map(resizeAndEncode));
 
-  const res = await fetch(CLAUDE_ENDPOINT, {
+  const res = await fetch(VISION_ENDPOINT, {
     method: 'POST',
-    headers: {
-      'anthropic-version': '2023-06-01',
-      'content-type': 'application/json',
-      ...(IS_LOCAL && {
-        'x-api-key': CLAUDE_API_KEY,
-        'anthropic-dangerous-direct-browser-access': 'true',
-      }),
-    },
+    headers: { 'content-type': 'application/json' },
     body: JSON.stringify({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 2048,
-      messages: [{
-        role: 'user',
-        content: [
+      contents: [{
+        parts: [
           ...images.map(img => ({
-            type: 'image',
-            source: { type: 'base64', media_type: img.type, data: img.data },
+            inline_data: { mime_type: img.type, data: img.data },
           })),
           {
-            type: 'text',
             text: '이 스크린샷들은 음악 앱 재생목록입니다. 보이는 모든 곡을 아래 형식으로만 출력하세요. 다른 텍스트는 절대 포함하지 마세요.\n\n아티스트명|||곡명\n아티스트명|||곡명',
           },
         ],
@@ -278,11 +266,11 @@ async function parseImagesWithClaude(files) {
 
   if (!res.ok) {
     const err = await res.json().catch(() => ({}));
-    throw new Error(err.error?.message || 'Claude API 오류 ' + res.status);
+    throw new Error(err.error?.message || err.error?.status || 'API 오류 ' + res.status);
   }
 
   const data = await res.json();
-  const text = data.content[0]?.text || '';
+  const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
 
   const seen = new Set();
   return text.split('\n')
