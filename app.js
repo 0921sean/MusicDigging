@@ -7,7 +7,7 @@ const LFM_API_KEY = '048d40ced7589b88e9f774754a03f679';
 const GEMINI_LOCAL_KEY = window.LOCAL_GEMINI_KEY || '';
 const IS_LOCAL = location.hostname === 'localhost' || location.hostname === '127.0.0.1';
 const VISION_ENDPOINT = IS_LOCAL
-  ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_LOCAL_KEY}`
+  ? `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_LOCAL_KEY}`
   : '/api/claude';
 const ESCAPE_CARD_COUNT = 5;
 const ESCAPE_GENRES = [
