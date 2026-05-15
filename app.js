@@ -160,7 +160,7 @@ function stopPreview() {
   player.pause();
   currentPreviewId = null;
   document.querySelectorAll('.preview-btn').forEach(b => {
-    b.textContent = '▶ 미리듣기';
+    b.textContent = '▶';
     b.classList.remove('playing');
   });
   document.querySelectorAll('.preview-bar').forEach(b => b.classList.remove('active'));
@@ -184,7 +184,7 @@ async function togglePreview(item, btn, bar) {
   const url = item.previewUrl;
   if (!url) {
     toast('미리듣기를 찾을 수 없어.');
-    btn.textContent = '▶ 미리듣기';
+    btn.textContent = '▶';
     return;
   }
 
@@ -192,7 +192,7 @@ async function togglePreview(item, btn, bar) {
   player.src = url;
   player.currentTime = 0;
   player.play();
-  btn.textContent = '■ 정지';
+  btn.textContent = '■';
   btn.classList.add('playing');
 
   // Progress bar
@@ -208,7 +208,7 @@ async function togglePreview(item, btn, bar) {
   player.onended = () => {
     if (currentPreviewId === item.id) {
       currentPreviewId = null;
-      btn.textContent = '▶ 미리듣기';
+      btn.textContent = '▶';
       btn.classList.remove('playing');
       bar.classList.remove('active');
       fill.style.width = '0%';
@@ -624,19 +624,19 @@ function buildCard(item, isFront) {
       ${(!artUrl && !artLoading) ? '<div class="card-art-placeholder">🎵</div>' : ''}
       ${item.isEscape ? '<span class="escape-badge">🎲 장르 탈출</span>' : ''}
       <div class="card-info-overlay">
-        <div class="card-track">${esc(item.track)}</div>
-        <div class="card-artist">${esc(item.artist)}</div>
+        <div class="card-tags">${tagsHtml}</div>
+        <div class="card-info-row">
+          <div class="card-text">
+            <div class="card-track">${esc(item.track)}</div>
+            <div class="card-artist">${esc(item.artist)}</div>
+          </div>
+          ${isFront ? `<button class="preview-btn">▶</button>` : ''}
+        </div>
       </div>
+      ${isFront ? `<div class="preview-bar"><div class="preview-bar-fill"></div></div>` : ''}
     </div>
     <div class="swipe-label like">LIKE</div>
     <div class="swipe-label pass">PASS</div>
-    <div class="card-bottom">
-      <div class="card-tags">${tagsHtml}</div>
-      ${isFront ? `
-        <button class="preview-btn">▶ 미리듣기</button>
-        <div class="preview-bar"><div class="preview-bar-fill"></div></div>
-      ` : ''}
-    </div>
   `;
 
   if (isFront) {

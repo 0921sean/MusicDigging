@@ -186,7 +186,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
     }
 
     .card {
@@ -210,12 +210,11 @@
 
     .card-art {
       width: 100%;
-      height: 260px;
+      height: clamp(300px, 46vh, 400px);
       background: var(--surface2) center/cover no-repeat;
       position: relative;
     }
     .card-art.loading {
-      background: var(--surface2);
       animation: shimmer 1.4s ease-in-out infinite;
       background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
       background-size: 200% 100%;
@@ -233,12 +232,16 @@
     .card-info-overlay {
       position: absolute;
       bottom: 0; left: 0; right: 0;
-      padding: 52px 18px 16px;
-      background: linear-gradient(to top, rgba(10,10,10,0.97) 0%, rgba(10,10,10,0.5) 55%, transparent 100%);
+      padding: 60px 18px 16px;
+      background: linear-gradient(to top, rgba(8,8,8,0.98) 0%, rgba(8,8,8,0.6) 50%, transparent 100%);
     }
-    .card-bottom {
-      padding: 14px 18px 18px;
+    .card-info-row {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 12px;
     }
+    .card-text { flex: 1; min-width: 0; }
 
     .escape-badge {
       position: absolute;
@@ -256,15 +259,16 @@
       border-radius: 20px;
     }
 
-    .card-track { font-size: 22px; font-weight: 800; margin-bottom: 3px; line-height: 1.2; color: #fff; }
-    .card-artist { font-size: 14px; color: rgba(255,255,255,0.65); }
-    .card-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+    .card-track { font-size: 22px; font-weight: 800; margin-bottom: 2px; line-height: 1.2; color: #fff; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+    .card-artist { font-size: 13px; color: rgba(255,255,255,0.6); margin-bottom: 0; }
+    .card-tags { display: flex; flex-wrap: nowrap; gap: 5px; margin-bottom: 10px; overflow: hidden; }
     .tag {
-      background: var(--surface2);
+      background: rgba(255,255,255,0.12);
       border-radius: 20px;
-      padding: 4px 11px;
-      font-size: 12px;
-      color: var(--muted);
+      padding: 3px 9px;
+      font-size: 11px;
+      color: rgba(255,255,255,0.7);
+      flex-shrink: 0;
     }
 
     .swipe-label {
@@ -287,26 +291,26 @@
       display: flex;
       justify-content: center;
       align-items: center;
-      gap: 20px;
-      margin-bottom: 14px;
+      gap: 28px;
+      margin-bottom: 12px;
     }
     .circle-btn {
-      width: 62px; height: 62px;
+      width: 68px; height: 68px;
       border-radius: 50%;
       border: 2px solid;
       background: none;
-      font-size: 22px;
+      font-size: 24px;
       cursor: pointer;
       display: flex;
       align-items: center;
       justify-content: center;
-      transition: transform 0.1s, background 0.2s;
+      transition: transform 0.12s, background 0.2s;
     }
-    .circle-btn:active { transform: scale(0.88); }
+    .circle-btn:active { transform: scale(0.85); }
     .circle-btn.pass { border-color: var(--pass); color: var(--pass); }
-    .circle-btn.pass:hover { background: rgba(248,113,113,0.1); }
+    .circle-btn.pass:hover { background: rgba(248,113,113,0.12); }
     .circle-btn.like { border-color: var(--like); color: var(--like); }
-    .circle-btn.like:hover { background: rgba(74,222,128,0.1); }
+    .circle-btn.like:hover { background: rgba(74,222,128,0.12); }
 
     .escape-btn {
       width: 100%;
@@ -542,29 +546,36 @@
 
     /* ── PREVIEW ── */
     .preview-btn {
-      margin-top: 20px;
-      width: 100%;
-      background: var(--surface2);
-      border: 1px solid var(--border);
-      border-radius: 10px;
-      color: var(--muted);
-      padding: 10px 16px;
-      font-size: 13px;
-      font-weight: 600;
+      width: 46px;
+      height: 46px;
+      border-radius: 50%;
+      background: rgba(255,255,255,0.13);
+      border: 1.5px solid rgba(255,255,255,0.28);
+      color: #fff;
+      font-size: 17px;
       cursor: pointer;
-      transition: background 0.2s, color 0.2s, border-color 0.2s;
+      flex-shrink: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      transition: background 0.2s, border-color 0.2s, color 0.2s;
       pointer-events: auto;
     }
-    .preview-btn:hover:not(:disabled) { background: var(--border); color: var(--text); }
-    .preview-btn.playing { border-color: var(--accent); color: var(--accent); }
+    .preview-btn:hover { background: rgba(255,255,255,0.22); }
+    .preview-btn.playing {
+      background: rgba(232,255,90,0.18);
+      border-color: var(--accent);
+      color: var(--accent);
+    }
     .preview-btn:disabled { opacity: 0.5; cursor: not-allowed; }
 
     .preview-bar {
-      margin-top: 8px;
+      position: absolute;
+      bottom: 0; left: 0; right: 0;
       height: 3px;
-      background: var(--border);
-      border-radius: 2px;
-      overflow: hidden;
+      background: rgba(255,255,255,0.12);
       display: none;
     }
     .preview-bar.active { display: block; }
@@ -573,7 +584,6 @@
       background: var(--accent);
       width: 0%;
       transition: width 0.5s linear;
-      border-radius: 2px;
     }
 
     /* ── TOAST ── */
