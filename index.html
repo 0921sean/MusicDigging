@@ -2,8 +2,11 @@
 <html lang="ko">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Music Digging</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -13,7 +16,7 @@
       --surface2: #242424;
       --border: #2e2e2e;
       --text: #f0f0f0;
-      --muted: #777;
+      --muted: #909090;
       --accent: #e8ff5a;
       --like: #4ade80;
       --pass: #f87171;
@@ -21,7 +24,7 @@
     }
 
     body {
-      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      font-family: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
       background: var(--bg);
       color: var(--text);
       min-height: 100vh;
@@ -211,6 +214,13 @@
       background: var(--surface2) center/cover no-repeat;
       position: relative;
     }
+    .card-art.loading {
+      background: var(--surface2);
+      animation: shimmer 1.4s ease-in-out infinite;
+      background: linear-gradient(90deg, var(--surface2) 25%, var(--border) 50%, var(--surface2) 75%);
+      background-size: 200% 100%;
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
     .card-art-placeholder {
       position: absolute;
       inset: 0;
@@ -384,17 +394,36 @@
 
     .import-link-btn {
       width: 100%;
-      background: none;
-      border: 1px dashed var(--border);
-      border-radius: 10px;
-      color: var(--muted);
-      padding: 10px;
-      font-size: 13px;
+      background: var(--surface);
+      border: 1.5px solid var(--accent);
+      border-radius: 14px;
+      color: var(--accent);
+      padding: 15px;
+      font-size: 15px;
+      font-weight: 700;
       cursor: pointer;
-      margin-bottom: 14px;
-      transition: border-color 0.2s, color 0.2s;
+      margin-top: 20px;
+      margin-bottom: 6px;
+      transition: background 0.2s;
     }
-    .import-link-btn:hover { border-color: var(--accent); color: var(--accent); }
+    .import-link-btn:hover { background: rgba(232,255,90,0.08); }
+
+    .setup-divider {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      color: var(--muted);
+      font-size: 11px;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin: 16px 0 4px;
+    }
+    .setup-divider::before, .setup-divider::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: var(--border);
+    }
 
     .modal-overlay {
       position: fixed;
@@ -592,13 +621,15 @@
     </select>
   </div>
 
+  <button class="import-link-btn" id="setup-import-btn">📷 재생목록 스크린샷으로 가져오기</button>
+
+  <div class="setup-divider">또는 직접 입력</div>
+
   <div class="seed-inputs">
     <input type="text" id="artist-input" placeholder="아티스트" />
     <input type="text" id="track-input" placeholder="노래 제목" />
     <button class="add-btn" id="add-seed-btn">+</button>
   </div>
-
-  <button class="import-link-btn" id="setup-import-btn">📷 스크린샷으로 가져오기</button>
 
   <div class="seed-list" id="seed-list"></div>
 

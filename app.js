@@ -340,7 +340,7 @@ async function handleImportFiles(files) {
       setImportModalBody(`
         <div class="import-error">
           <div style="font-size:44px;margin-bottom:14px">🤔</div>
-          <p>곡을 찾지 못했어.<br>재생목록이 잘 보이는 스크린샷인지 확인해봐.</p>
+          <p>곡을 찾지 못했어.<br>재생목록 화면에서 곡명·아티스트가 잘 보이는 스크린샷이 잘 돼요.<br><span style="font-size:11px;opacity:0.6">YouTube Music '재생목록' 또는 '좋아요 표시한 음악' 화면 권장</span></p>
           <button class="import-action-btn" id="retry-btn" style="margin-top:20px;background:var(--surface2);color:var(--text)">다시 시도</button>
         </div>
       `);
@@ -618,9 +618,10 @@ function buildCard(item, isFront) {
 
   const artUrl = item.artworkUrl || '';
 
+  const artLoading = !artUrl && !item._itunesFetched;
   card.innerHTML = `
-    <div class="card-art"${artUrl ? ` style="background-image:url('${artUrl}')"` : ''}>
-      ${!artUrl ? '<div class="card-art-placeholder">🎵</div>' : ''}
+    <div class="card-art${artLoading ? ' loading' : ''}"${artUrl ? ` style="background-image:url('${artUrl}')"` : ''}>
+      ${(!artUrl && !artLoading) ? '<div class="card-art-placeholder">🎵</div>' : ''}
       ${item.isEscape ? '<span class="escape-badge">🎲 장르 탈출</span>' : ''}
       <div class="card-info-overlay">
         <div class="card-track">${esc(item.track)}</div>
