@@ -3,6 +3,11 @@
   publish = "."
 
 [[redirects]]
+  from = "/config.local.js"
+  to = "/config.example.js"
+  status = 200
+
+[[redirects]]
   from = "/api/claude"
   to = "/.netlify/functions/claude"
   status = 200
