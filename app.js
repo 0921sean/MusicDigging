@@ -179,14 +179,15 @@ async function togglePreview(item, btn, bar) {
   await getItunesData(item);
 
   if (!btn.isConnected) return;
-  btn.disabled = false;
 
   const url = item.previewUrl;
   if (!url) {
-    toast('미리듣기를 찾을 수 없어.');
+    btn.disabled = true;
     btn.textContent = '▶';
     return;
   }
+
+  btn.disabled = false;
 
   currentPreviewId = item.id;
   player.src = url;
@@ -630,7 +631,7 @@ function buildCard(item, isFront) {
             <div class="card-track">${esc(item.track)}</div>
             <div class="card-artist">${esc(item.artist)}</div>
           </div>
-          ${isFront ? `<button class="preview-btn">▶</button>` : ''}
+          ${isFront ? `<button class="preview-btn"${item.previewUrl === null ? ' disabled title="미리듣기 없음"' : ''}>▶</button>` : ''}
         </div>
       </div>
       ${isFront ? `<div class="preview-bar"><div class="preview-bar-fill"></div></div>` : ''}
