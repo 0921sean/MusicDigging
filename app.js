@@ -758,6 +758,8 @@ function commitSwipe(direction, card) {
 async function handleEscape() {
   if (state.escapeMode) return;
 
+  stopPreview();
+
   const btn = document.getElementById('escape-btn');
   btn.style.opacity = '0.5';
   btn.style.pointerEvents = 'none';
